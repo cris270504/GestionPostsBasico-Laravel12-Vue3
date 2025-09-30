@@ -1,0 +1,97 @@
+import { defineStore } from 'pinia'
+import { listPosts, createPost, updatePost, deletePost, getPost } from '@/services/posts'
+import { confirmarEliminacion, showAlerta,showErroresDeValidacion } from '@/funciones'
+
+export const usePostsStore = defineStore('posts', {
+  state: () => ({
+    items: [],
+    loading: false,
+    error: null,
+  }),
+
+  getters: {
+    byId: (state) => (id) => state.items.find(p => p.id === id),
+    count: (state) => state.items.length,
+  },
+
+  actions: {
+    async fetchAll() {
+      this.loading = true
+      this.error = null
+      try {
+        this.items = await listPosts()
+      } catch (e) {
+        this.error = e?.message || 'Error al listar'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async fetchOne(id) {
+      this.loading = true
+      this.error = null
+      try {
+        const post = await getPost(id)
+        const idx = this.items.findIndex(p => p.id === id)
+        if (idx === -1) this.items.unshift(post)
+        else this.items[idx] = post
+      } catch (e) {
+        this.error = e?.message || 'Error al obtener'
+      } finally {
+        this.loading = false
+      }
+    },
+
+    async add(post) {
+      try {
+        const created = await createPost(post)
+        const idx = this.items.findIndex(p => p.id === created.id)
+        if (idx !== -1) this.items[idx] = created
+        else this.items.unshift(created)
+        showAlerta('Creado correctamente', 'success')
+        return created
+      } catch (e) {
+        const errors = e?.response?.data?.errors
+        showErroresDeValidacion(errors)
+        throw e
+      }
+    },
+
+    async save(id, post) {
+      try {
+        const updated = await updatePost(id, post)
+        const idx = this.items.findIndex(p => p.id === id)
+        if (idx !== -1) this.items[idx] = updated
+        showAlerta('Actualizado correctamente', 'success')
+        return updated
+      } catch (e) {
+        const errors = e?.response?.data?.errors
+        showErroresDeValidacion(errors)
+        throw e
+      }
+    },
+
+    /**
+     * Confirma y, si aceptan, elimina el post desde el store
+     * @param {number|string} id
+     * @param {string} nombre para mostrar (ej: título)
+     */
+    async remove(id, nombre ) {
+      const ok = await confirmarEliminacion(nombre)
+      if (!ok) {
+        showAlerta('Operación cancelada', 'info')
+        return false
+      }
+
+      try {
+        await deletePost(id)
+        this.items = this.items.filter(p => p.id !== id)
+        showAlerta('Eliminado correctamente', 'success')
+        return true
+      } catch (e) {
+        showAlerta(e?.message || 'No se pudo eliminar', 'error')
+        return false
+      }
+    },
+  },
+})
